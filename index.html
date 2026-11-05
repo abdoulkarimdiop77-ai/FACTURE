@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Facturier</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0c3546">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Facturier">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root{
+  --deep:#0c3546;      /* fond profond, verre épais */
+  --ink:#12303c;
+  --ink2:#486573;
+  --pane:#e8f1f4;      /* fond verre clair */
+  --paper:#fbfdfd;
+  --line:#c9dbe2;
+  --cy:#0e8ea8;
+  --cy-d:#0a6b7f;
+  --putty:#e0a526;     /* mastic */
+  --ok:#1a7f55;
+  --err:#b83227;
+  --r:6px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--pane);color:var(--ink);font:15px/1.45 "Avenir Next","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
+button,input,select{font:inherit;color:inherit}
+h1,h2,h3{margin:0;line-height:1.2}
+.wrap{max-width:860px;margin:0 auto;padding:12px}
+
+/* ---------- Accès ---------- */
+.auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:18px;background:
+  linear-gradient(118deg,transparent 0 58%,rgba(255,255,255,.07) 58% 64%,transparent 64%),var(--deep)}
+.auth-card{width:100%;max-width:400px;background:var(--paper);border-radius:10px;padding:22px 20px 24px}
+.brand h1{font-size:24px;letter-spacing:-.01em;color:var(--deep)}
+.brand p{margin:4px 0 16px;color:var(--ink2)}
+.seg{display:flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:#fff}
+.seg button{flex:1;border:0;background:transparent;padding:9px 6px;cursor:pointer;color:var(--ink2);font-weight:600}
+.seg button.on{background:var(--deep);color:#fff}
+.field{display:block;margin:12px 0 0}
+.field>span{display:block;font-size:13px;color:var(--ink2);margin-bottom:4px}
+.field input,.field select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:var(--r);background:#fff;font-size:16px}
+.field input:focus,.field select:focus,.cell:focus{outline:2px solid var(--cy);outline-offset:0;border-color:var(--cy)}
+.msg{min-height:20px;margin:10px 0 0;font-size:14px;color:var(--err)}
+.msg.ok{color:var(--ok)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:#fff;border-radius:var(--r);padding:10px 14px;cursor:pointer;font-weight:600}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--cy);border-color:var(--cy);color:#fff}
+.btn.dark{background:var(--deep);border-color:var(--deep);color:#fff}
+.btn.danger{color:var(--err);border-color:#e6c3bf}
+.btn.sm{padding:7px 10px;font-size:13px}
+.btn.block{width:100%;margin-top:14px;padding:13px}
+.logo-pick{display:flex;align-items:center;gap:12px;margin-top:12px}
+.logo-prev{width:64px;height:64px;border:1px dashed var(--line);border-radius:var(--r);background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--ink2);font-size:12px;text-align:center}
+.logo-prev img{width:100%;height:100%;object-fit:contain}
+
+/* ---------- Application ---------- */
+.top{position:sticky;top:0;z-index:20;background:
+  linear-gradient(118deg,transparent 0 72%,rgba(255,255,255,.08) 72% 78%,transparent 78%),var(--deep);
+  color:#fff;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.who{display:flex;align-items:center;gap:10px;min-width:0}
+.who img{width:34px;height:34px;object-fit:contain;background:#fff;border-radius:4px}
+.who b{display:block;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who small{display:block;opacity:.7;font-size:12px}
+.chip{font-size:12px;padding:5px 9px;border-radius:99px;background:rgba(255,255,255,.14);white-space:nowrap}
+.chip::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:#6fd3a4}
+.chip.off::before{background:var(--putty)}
+.chip.sync::before{background:#7cc4ff}
+.chip.err::before{background:#ff8a80}
+
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:var(--paper);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+.tabs button{flex:1;border:0;background:transparent;padding:9px 2px 8px;cursor:pointer;font-size:12px;color:var(--ink2);display:flex;flex-direction:column;align-items:center;gap:2px;position:relative}
+.tabs button .ic{font-size:20px;line-height:1}
+.tabs button.on{color:var(--cy-d);font-weight:700}
+.tabs button.on::after{content:"";position:absolute;top:0;left:22%;right:22%;height:3px;background:var(--cy)}
+
+.sheet{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px}
+.sheet h3{font-size:16px;margin-bottom:10px;color:var(--deep)}
+.facthead{display:flex;gap:12px;align-items:center;justify-content:space-between}
+.facthead .l{display:flex;gap:12px;align-items:center;min-width:0}
+.facthead img{width:56px;height:56px;object-fit:contain;border:1px solid var(--line);border-radius:4px;background:#fff}
+.facthead b{font-size:17px;display:block}
+.facthead small{color:var(--ink2);display:block}
+.facthead .r{text-align:right;font-size:13px;color:var(--ink2);flex-shrink:0}
+.facthead .r input{border:1px solid var(--line);border-radius:var(--r);padding:6px 8px;background:#fff;font-size:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+@media(max-width:520px){.grid2{grid-template-columns:1fr}}
+.unitbar{display:flex;align-items:center;gap:10px;margin:0 0 12px;color:var(--ink2);font-size:14px}
+.unitbar .seg{width:130px}
+.banner{background:#fff6dc;border:1px solid #ecd48a;border-radius:var(--r);padding:10px 12px;margin-bottom:12px;display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:14px}
+
+/* tableaux de saisie : lignes de carnet */
+.scroll{overflow-x:auto;margin:0 -4px;padding:0 4px}
+table.t{width:100%;min-width:470px;border-collapse:collapse}
+table.t th{font-size:12px;font-weight:600;color:var(--ink2);text-align:center;padding:4px 3px 6px;border-bottom:2px solid var(--deep);white-space:nowrap}
+table.t td{padding:3px;border-bottom:1px solid var(--line);text-align:center}
+table.t td.n{width:22px;color:var(--ink2);font-size:12px}
+table.t td.calc{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap;padding:3px 6px;text-align:right}
+table.t td.calc.t{color:var(--deep)}
+.cell{width:100%;min-width:56px;padding:9px 6px;border:1px solid transparent;border-radius:4px;background:#f1f7f9;text-align:center;font-size:16px}
+.x{border:0;background:transparent;color:var(--ink2);font-size:20px;line-height:1;width:28px;height:34px;cursor:pointer}
+.montant{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding:11px 12px;background:var(--deep);color:#fff;border-radius:var(--r);font-weight:700}
+.montant b{font-size:18px;font-variant-numeric:tabular-nums}
+
+.sechead{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.sectitle{flex:1;min-width:0;font-size:17px;font-weight:700;color:var(--deep);border:0;border-bottom:2px solid var(--line);background:transparent;padding:4px 2px}
+.sectitle:focus{outline:none;border-color:var(--cy)}
+.secopts{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.secmode,.secq{flex:1;min-width:150px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r);background:#fff;font-size:14px}
+.cell.txt{text-align:left;min-width:120px;font-size:15px}
+
+/* total */
+.total{background:var(--deep);color:#fff;border-radius:var(--r);padding:16px 14px;margin-bottom:12px}
+.total .row{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.total .lab{font-size:18px;font-weight:700;letter-spacing:.02em}
+.total .big{font-size:30px;font-weight:800;color:var(--putty);font-variant-numeric:tabular-nums;text-align:right}
+.total .sub{margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.2)}
+.total .sub .row span:last-child{font-variant-numeric:tabular-nums}
+.total .netline{margin-top:8px;background:var(--cy);border-radius:var(--r);padding:10px 12px}
+.total .netline .big{color:#fff;font-size:28px}
+.switch{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:15px}
+.switch input{width:22px;height:22px;accent-color:var(--putty)}
+.pct{display:flex;align-items:center;gap:8px;margin-top:8px}
+.pct input{width:96px;padding:9px;border-radius:var(--r);border:0;font-size:16px;text-align:center;color:var(--ink)}
+
+/* listes */
+.search{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:var(--r);background:#fff;font-size:16px;margin-bottom:12px}
+.item{background:var(--paper);border:1px solid var(--line);border-left:5px solid var(--cy);border-radius:var(--r);padding:12px;margin-bottom:10px}
+.item .head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.item .num{font-size:13px;color:var(--ink2)}
+.item .cl{font-size:17px;font-weight:700;color:var(--deep)}
+.item .amt{font-size:19px;font-weight:800;text-align:right;color:var(--deep);font-variant-numeric:tabular-nums;white-space:nowrap}
+.item .meta{font-size:13px;color:var(--ink2);margin-top:2px}
+.acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.pill{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;background:#eceff1;color:var(--ink2)}
+.pill.ok{background:#d9f0e6;color:var(--ok)}
+.pill.part{background:#fdf0cf;color:#8a6200}
+.empty{text-align:center;color:var(--ink2);padding:26px 10px}
+.sum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;text-align:center}
+.sum div{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:8px 4px;font-size:12px;color:var(--ink2)}
+.sum b{display:block;font-size:15px;color:var(--deep);font-variant-numeric:tabular-nums}
+
+/* fenêtre de saisie du reçu */
+.modal{position:fixed;inset:0;z-index:50;background:rgba(8,28,38,.6);display:flex;align-items:flex-end;justify-content:center}
+.modal .box{width:100%;max-width:520px;max-height:92vh;overflow:auto;background:var(--paper);border-radius:12px 12px 0 0;padding:16px 16px calc(18px + env(safe-area-inset-bottom))}
+.modal .box h3{font-size:18px;margin-bottom:4px}
+.note{font-size:14px;color:var(--ink2);margin:6px 0 0}
+.reste{margin-top:12px;padding:12px;border-radius:var(--r);background:#fff6dc;border:1px solid #ecd48a;display:flex;justify-content:space-between;font-weight:700}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--deep);color:#fff;padding:10px 16px;border-radius:99px;font-size:14px;z-index:99;max-width:90vw;text-align:center;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+.tip{font-size:14px;color:var(--ink2)}
+.tip li{margin:4px 0}
+@media(min-width:800px){.tabs{justify-content:center}.tabs button{max-width:170px}.modal{align-items:center}.modal .box{border-radius:12px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- ===================== ACCÈS ===================== -->
+<div id="auth" class="auth" hidden>
+  <div class="auth-card">
+    <div class="brand">
+      <h1>Facturier</h1>
+      <p>Factures et reçus pour les métiers d'ouvriers et d'artisans.</p>
+    </div>
+    <div class="seg" id="authSeg">
+      <button type="button" data-act="authTab" data-id="login" class="on">Connexion</button>
+      <button type="button" data-act="authTab" data-id="reg">Inscription</button>
+    </div>
+    <p class="msg" id="authMsg"></p>
+
+    <form id="fLogin" autocomplete="on">
+      <label class="field"><span>Votre ID</span><input id="lgId" autocomplete="username" autocapitalize="none" autocorrect="off" placeholder="ex. vitrerie-diallo"></label>
+      <label class="field"><span>Mot de passe</span><input id="lgPw" type="password" autocomplete="current-password"></label>
+      <button class="btn primary block" type="submit">Se connecter</button>
+    </form>
+
+    <form id="fReg" autocomplete="on" hidden>
+      <label class="field"><span>Choisissez votre ID (lettres, chiffres, - et _)</span><input id="rgId" autocomplete="username" autocapitalize="none" autocorrect="off" placeholder="ex. vitrerie-diallo"></label>
+      <label class="field"><span>Nom de l'atelier</span><input id="rgNom" placeholder="Atelier Diallo"></label>
+      <label class="field"><span>Métier</span><select id="rgMetier"></select></label>
+      <label class="field"><span>Contacts de l'atelier</span><input id="rgContacts" placeholder="+224 6xx xx xx xx"></label>
+      <label class="field"><span>Adresse de l'atelier</span><input id="rgAdr" placeholder="Quartier, commune, ville"></label>
+      <div class="logo-pick">
+        <div class="logo-prev" id="rgLogoPrev">Logo</div>
+        <label class="btn sm" for="rgLogo">Choisir le logo</label>
+        <input id="rgLogo" type="file" accept="image/*" hidden>
+      </div>
+      <label class="field"><span>Mot de passe (6 caractères minimum)</span><input id="rgPw" type="password" autocomplete="new-password"></label>
+      <label class="field"><span>Confirmer le mot de passe</span><input id="rgPw2" type="password" autocomplete="new-password"></label>
+      <button class="btn primary block" type="submit">Créer mon compte</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== APPLICATION ===================== -->
+<div id="app" hidden>
+  <header class="top">
+    <div class="who">
+      <img id="hLogo" alt="" hidden>
+      <div><b id="hNom">Atelier</b><small id="hId"></small></div>
+    </div>
+    <span class="chip" id="chip">…</span>
+  </header>
+
+  <main class="wrap">
+
+    <!-- ===== Nouvelle facture ===== -->
+    <section id="v-new" class="view">
+      <div class="banner" id="editBanner" hidden>
+        <span>Modification de la facture <b id="editNum"></b></span>
+        <button class="btn sm" data-act="cancelEdit">Annuler</button>
+      </div>
+
+      <div class="sheet">
+        <div class="facthead">
+          <div class="l">
+            <img id="fhLogo" alt="" hidden>
+            <div><b id="fhNom">Atelier</b><small id="fhInfo"></small></div>
+          </div>
+          <div class="r">Date<br><input type="date" id="dDate" data-d="date"></div>
+        </div>
+      </div>
+
+      <div class="sheet">
+        <h3>Client</h3>
+        <div class="grid2">
+          <label class="field"><span>Prénoms et nom</span><input id="cNom" data-d="client_nom" autocomplete="off"></label>
+          <label class="field"><span>Contact</span><input id="cTel" data-d="client_contact" inputmode="tel" autocomplete="off"></label>
+        </div>
+        <label class="field"><span>Adresse du chantier</span><input id="cAdr" data-d="chantier" autocomplete="off"></label>
+      </div>
+
+      <div class="sheet">
+        <label class="field" style="margin-top:0"><span>Métier (modèle de tableaux)</span><select id="metierSel"></select></label>
+        <div class="unitbar" style="margin:12px 0 0">
+          Dimensions en
+          <div class="seg" id="unitSeg">
+            <button type="button" data-act="unit" data-id="m">mètres</button>
+            <button type="button" data-act="unit" data-id="cm">cm</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="secs"></div>
+
+      <div class="sheet">
+        <label class="field" style="margin-top:0"><span>Ajouter un tableau</span><select id="addMode"></select></label>
+        <button class="btn block" data-act="addSec" style="margin-top:10px">+ Ajouter ce tableau</button>
+      </div>
+
+      <div class="total">
+        <div class="row"><span class="lab">FACTURE :</span><span class="big" id="fact">0</span></div>
+        <label class="switch"><input type="checkbox" id="remOn"> Appliquer une remise</label>
+        <div id="remBox" hidden>
+          <div class="pct"><input id="remPct" inputmode="decimal" placeholder="0"> <span>% de remise</span></div>
+        </div>
+        <div id="netBox" hidden>
+          <div class="sub">
+            <div class="row"><span id="remLbl">Remise</span><span id="remAmt">0</span></div>
+            <div class="netline row"><span class="lab">FACTURE NETTE :</span><span class="big" id="net">0</span></div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn primary block" data-act="confirm" id="btnConfirm">Confirmer la facture</button>
+      <button class="btn block" data-act="resetDraft">Vider le formulaire</button>
+    </section>
+
+    <!-- ===== Projets ===== -->
+    <section id="v-projets" class="view" hidden>
+      <input class="search" id="pSearch" type="search" placeholder="Chercher un client, un numéro, un chantier">
+      <div id="pList"></div>
+    </section>
+
+    <!-- ===== Reçus ===== -->
+    <section id="v-recus" class="view" hidden>
+      <div class="sheet">
+        <label class="field" style="margin-top:0"><span>Projet</span><select id="rpSel"></select></label>
+        <div id="rpSummary"></div>
+        <button class="btn primary block" data-act="newRecu" id="rpNew">Nouveau reçu</button>
+      </div>
+      <div id="rpList"></div>
+    </section>
+
+    <!-- ===== Atelier ===== -->
+    <section id="v-profil" class="view" hidden>
+      <div class="sheet">
+        <h3>Mon atelier</h3>
+        <label class="field" style="margin-top:0"><span>ID de connexion</span><input id="pfId" readonly></label>
+        <label class="field"><span>Nom de l'atelier</span><input id="pfNom"></label>
+        <label class="field"><span>Métier par défaut des nouvelles factures</span><select id="pfMetier"></select></label>
+        <label class="field"><span>Contacts</span><input id="pfContacts"></label>
+        <label class="field"><span>Adresse</span><input id="pfAdr"></label>
+        <label class="field"><span>Monnaie</span><input id="pfDevise" maxlength="6"></label>
+        <div class="logo-pick">
+          <div class="logo-prev" id="pfLogoPrev">Logo</div>
+          <label class="btn sm" for="pfLogo">Changer le logo</label>
+          <input id="pfLogo" type="file" accept="image/*" hidden>
+        </div>
+        <button class="btn primary block" data-act="saveProfil">Enregistrer</button>
+      </div>
+      <div class="sheet">
+        <h3>Synchronisation</h3>
+        <p class="note" id="syncInfo"></p>
+        <button class="btn block" data-act="syncNow">Synchroniser maintenant</button>
+      </div>
+      <div class="sheet">
+        <h3>Installer sur le téléphone</h3>
+        <ul class="tip">
+          <li><b>iPhone</b> : ouvrez cette page dans Safari, touchez Partager, puis « Sur l'écran d'accueil ».</li>
+          <li><b>Android</b> : dans Chrome, touchez ⋮ puis « Installer l'application ».</li>
+          <li>Après l'installation, l'application s'ouvre même sans internet.</li>
+        </ul>
+      </div>
+      <button class="btn danger block" data-act="logout">Se déconnecter</button>
+    </section>
+  </main>
+
+  <nav class="tabs">
+    <button data-act="tab" data-id="new" class="on"><span class="ic">🧾</span>Facture</button>
+    <button data-act="tab" data-id="projets"><span class="ic">📁</span>Projets</button>
+    <button data-act="tab" data-id="recus"><span class="ic">💵</span>Reçus</button>
+    <button data-act="tab" data-id="profil"><span class="ic">🏭</span>Atelier</button>
+  </nav>
+</div>
+
+<!-- Fenêtre : nouveau reçu -->
+<div class="modal" id="mRecu" hidden>
+  <div class="box">
+    <h3>Nouveau reçu</h3>
+    <p class="note" id="mrInfo"></p>
+    <label class="field"><span>Projet</span><select id="mrProj"></select></label>
+    <label class="field"><span>Montant reçu</span><input id="mrMontant" inputmode="decimal"></label>
+    <label class="field"><span>Reçu le</span><input id="mrDate" type="date"></label>
+    <div class="reste"><span>Reste à payer</span><span id="mrReste">0</span></div>
+    <label class="field" id="mrDRWrap"><span>Reste payable le</span><input id="mrDateReste" type="date"></label>
+    <button class="btn primary block" data-act="saveRecu">Enregistrer le reçu</button>
+    <button class="btn block" data-act="closeModal">Fermer</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================================
+   Facturier
+   - Fonctionne sans connexion : tout est enregistré sur l'appareil.
+   - Dès qu'internet revient, les changements sont envoyés à la base
+     en ligne et récupérés sur les autres appareils (PC, autre téléphone).
+   ===================================================================== */
+const SB_URL='https://kkmegpbfmgprujpjnfpk.supabase.co';
+const SB_KEY='sb_publishable_FRsYkEiIfz2oXGvT1I0fOQ_jwAnaPzs';
+const sb=window.supabase?window.supabase.createClient(SB_URL,SB_KEY):null;
+
+const $=s=>document.querySelector(s);
+const $$=s=>[...document.querySelectorAll(s)];
+const S={uid:null,ident:'',atelier:{},projets:[],recus:[],queue:[]};
+let D=null;            // brouillon de facture en cours
+let regLogo='';        // logo choisi à l'inscription
+let pfLogoNew=null;    // logo choisi dans « Atelier »
+let rpFocus='';        // projet choisi dans l'onglet Reçus
+
+/* ---------- outils ---------- */
+const uuid=()=>crypto.randomUUID?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&3|8)).toString(16)});
+const num=v=>{const n=parseFloat(String(v??'').replace(/\s/g,'').replace(',','.'));return isFinite(n)?n:0;};
+const fmt=n=>Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ');
+const fmtN=n=>String(Math.round(n*100)/100).replace('.',',');
+const dev=()=>S.atelier.devise||'GNF';
+const money=n=>fmt(n)+' '+dev();
+const todayISO=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+const fdate=s=>{if(!s)return '—';const [y,m,d]=String(s).slice(0,10).split('-');return `${d}/${m}/${y}`;};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const safe=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'_').slice(0,30);
+const code=()=>uuid().replace(/-/g,'').slice(0,3).toUpperCase();
+const stamp=()=>{const d=new Date();return String(d.getFullYear()).slice(2)+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');};
+let toastT;
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2800);}
+
+/* ---------- calculs ---------- */
+/* Chaque tableau choisit le type de calcul qui convient au métier. */
+const MODES={
+  surface:{label:'Surface : longueur × largeur × prix m² × quantité',cols:['des','l','w','q','pm','u','t']},
+  surface_directe:{label:'Surface connue (m²) × prix m²',cols:['des','s','pm','t']},
+  lineaire:{label:'Longueur × prix au mètre',cols:['des','d','pm','t']},
+  lineaire_q:{label:'Longueur × prix au mètre × quantité',cols:['des','d','q','pm','u','t']},
+  volume:{label:'Volume : L × l × h × prix m³ × quantité',cols:['des','l','w','h','q','pm','u','t']},
+  unite:{label:'Quantité × prix unitaire (fournitures, jours, kg…)',cols:['des','q','pm','t']},
+  forfait:{label:'Forfait (montant fixe)',cols:['des','pm']}
+};
+function colLabel(c,sec,unite){
+  const L={des:'Désignation',l:`Long. (${unite})`,w:`Larg. (${unite})`,h:`Haut. (${unite})`,d:`Dimension (${unite})`,s:'Surface (m²)',
+    q:sec.mode==='unite'?(sec.qlabel||'Qté'):'Qté',u:'Prix unitaire',t:'Prix total',
+    pm:{surface:'Prix m²',surface_directe:'Prix m²',lineaire:'Prix / m',lineaire_q:'Prix / m',volume:'Prix m³',unite:'Prix unitaire',forfait:'Montant'}[sec.mode]};
+  if(c==='t'&&(sec.mode==='lineaire'||sec.mode==='surface_directe'))return 'Prix';
+  return L[c];
+}
+const qty=r=>String(r.q==null?'':r.q).trim()===''?1:num(r.q);
+function calcLine(sec,r,unite){
+  const k=unite==='cm'?0.01:1;
+  switch(sec.mode){
+    case 'surface':{const u=Math.round(num(r.l)*k*num(r.w)*k*num(r.pm));return {u,t:Math.round(u*qty(r))};}      // prix unitaire, puis total avec la quantité
+    case 'surface_directe':return {u:null,t:Math.round(num(r.s)*num(r.pm))};
+    case 'lineaire':return {u:null,t:Math.round(num(r.d)*k*num(r.pm))};
+    case 'lineaire_q':{const u=Math.round(num(r.d)*k*num(r.pm));return {u,t:Math.round(u*qty(r))};}
+    case 'volume':{const u=Math.round(num(r.l)*k*num(r.w)*k*num(r.h)*k*num(r.pm));return {u,t:Math.round(u*qty(r))};}
+    case 'unite':return {u:Math.round(num(r.pm)),t:Math.round(qty(r)*num(r.pm))};
+    default:return {u:null,t:Math.round(num(r.pm))};
+  }
+}
+function isComplete(sec,r){
+  const p=num(r.pm)>0;
+  switch(sec.mode){
+    case 'surface':return num(r.l)>0&&num(r.w)>0&&p;
+    case 'surface_directe':return num(r.s)>0&&p;
+    case 'lineaire':case 'lineaire_q':return num(r.d)>0&&p;
+    case 'volume':return num(r.l)>0&&num(r.w)>0&&num(r.h)>0&&p;
+    default:return p;
+  }
+}
+const secTotal=(sec,unite)=>(sec.rows||[]).reduce((s,r)=>s+(isComplete(sec,r)?calcLine(sec,r,unite).t:0),0);
+function blankRow(mode){
+  const r={des:''};
+  MODES[mode].cols.forEach(c=>{if(['l','w','h','d','s','pm'].includes(c))r[c]='';if(c==='q')r.q='1';});
+  return r;
+}
+function totals(p){
+  const secs=p.sections.map(s=>secTotal(s,p.unite));
+  const f=secs.reduce((a,b)=>a+b,0);
+  const pct=p.remise_active?Math.min(100,Math.max(0,num(p.remise_pct))):0;
+  const rem=Math.round(f*pct/100);
+  return {secs,f,pct,rem,net:f-rem};
+}
+
+/* ---------- métiers : modèles de tableaux ---------- */
+const METIERS={
+  vitrerie:{label:'Vitrerie / Aluminium',t:[['Fenêtres','surface'],['Portes','surface'],['Inox','lineaire']]},
+  carrelage:{label:'Carrelage',t:[['Pose sol','surface'],['Pose murs','surface'],['Plinthes','lineaire_q'],['Fournitures','unite']]},
+  peinture:{label:'Peinture',t:[['Murs et plafonds','surface'],['Boiseries et portes','surface'],['Fournitures','unite'],["Main d'œuvre",'forfait']]},
+  maconnerie:{label:'Maçonnerie / Béton',t:[['Béton et fondations','volume'],['Murs et élévations','surface'],['Enduit et chape','surface'],['Matériaux','unite'],["Main d'œuvre",'unite','Jours']]},
+  menuiserie:{label:'Menuiserie bois',t:[['Portes','surface'],['Fenêtres','surface'],['Meubles et placards','surface'],['Quincaillerie','unite']]},
+  plomberie:{label:'Plomberie',t:[['Tuyauterie','lineaire_q'],['Appareils sanitaires','unite'],["Main d'œuvre",'forfait']]},
+  electricite:{label:'Électricité',t:[['Câblage','lineaire_q'],['Appareillage (prises, lampes…)','unite'],["Main d'œuvre",'forfait']]},
+  soudure:{label:'Soudure / Ferronnerie',t:[['Portails et grilles','surface'],['Barrières et rampes','lineaire_q'],['Matériaux','unite'],["Main d'œuvre",'forfait']]},
+  couverture:{label:'Couverture / Toiture',t:[['Toiture','surface'],['Faîtage et rives','lineaire_q'],['Fournitures','unite']]},
+  platrerie:{label:'Plâtrerie / Faux plafond',t:[['Faux plafond','surface'],['Cloisons','surface'],['Corniches','lineaire_q'],['Fournitures','unite']]},
+  general:{label:'Autre métier',t:[['Travaux','surface_directe'],['Fournitures','unite'],["Main d'œuvre",'unite','Jours']]}
+};
+function modelSections(key){
+  const m=METIERS[key]||METIERS.general;
+  return m.t.map(([titre,mode,ql])=>({id:uuid(),titre,mode,qlabel:ql||'',rows:[blankRow(mode)]}));
+}
+/* anciennes factures (fenêtres / portes / inox) : converties en tableaux */
+function legacySections(p){
+  const mk=(titre,mode,rows)=>({id:uuid(),titre,mode,qlabel:'',rows:(rows||[]).map(r=>({...blankRow(mode),...r}))});
+  const out=[];
+  if((p.fenetres||[]).length)out.push(mk('Fenêtres','surface',p.fenetres));
+  if((p.portes||[]).length)out.push(mk('Portes','surface',p.portes));
+  if((p.inoxes||[]).length)out.push(mk('Inox','lineaire',p.inoxes));
+  return out;
+}
+const secsOf=p=>Array.isArray(p.sections)&&p.sections.length?p.sections:legacySections(p);
+
+/* ---------- stockage local + file d'attente de synchronisation ---------- */
+const KEY=()=>'vit_'+S.uid;
+function loadLocal(){
+  let d={};try{d=JSON.parse(localStorage.getItem(KEY())||'{}');}catch(e){}
+  S.atelier=d.atelier||{};S.projets=d.projets||[];S.recus=d.recus||[];S.queue=d.queue||[];
+}
+function persist(){
+  try{localStorage.setItem(KEY(),JSON.stringify({atelier:S.atelier,projets:S.projets,recus:S.recus,queue:S.queue}));}
+  catch(e){toast('Mémoire de l\'appareil pleine');}
+  setChip();
+}
+function enqueue(op){
+  S.queue=S.queue.filter(q=>!(q.table===op.table&&q.id===op.id));
+  S.queue.push(op);persist();flush();
+}
+function dropQueue(table,ids){S.queue=S.queue.filter(q=>!(q.table===table&&ids.includes(q.id)));}
+const TBL={vit_ateliers:()=>S.atelier,vit_projets:id=>S.projets.find(x=>x.id===id),vit_recus:id=>S.recus.find(x=>x.id===id)};
+let flushing=false,syncState='';
+async function flush(){
+  if(flushing||!sb||!S.uid||!navigator.onLine)return;
+  flushing=true;syncState='sync';setChip();
+  try{
+    const prio={vit_ateliers:0,vit_projets:1,vit_recus:2};
+    const ups=S.queue.filter(q=>q.type==='up').sort((a,b)=>prio[a.table]-prio[b.table]);
+    const dels=S.queue.filter(q=>q.type==='del').sort((a,b)=>prio[b.table]-prio[a.table]);
+    for(const q of [...ups,...dels]){
+      const keyCol=q.table==='vit_ateliers'?'user_id':'id';
+      let res;
+      if(q.type==='up'){
+        const row=TBL[q.table](q.id);
+        if(row)res=await sb.from(q.table).upsert({...row,user_id:S.uid},{onConflict:keyCol});
+      }else{
+        res=await sb.from(q.table).delete().eq(keyCol,q.id).eq('user_id',S.uid);
+      }
+      if(res&&res.error)throw res.error;
+      S.queue=S.queue.filter(x=>x!==q);
+    }
+    persist();
+    await pull();
+    syncState='';
+  }catch(e){console.error(e);syncState='err';}
+  flushing=false;setChip();
+}
+async function pull(){
+  const [a,p,r]=await Promise.all([
+    sb.from('vit_ateliers').select('*').eq('user_id',S.uid).maybeSingle(),
+    sb.from('vit_projets').select('*').eq('user_id',S.uid),
+    sb.from('vit_recus').select('*').eq('user_id',S.uid)
+  ]);
+  if(a.error||p.error||r.error)throw (a.error||p.error||r.error);
+  const pend=(t,id)=>S.queue.some(q=>q.table===t&&q.id===id);
+  const pendUp=(t,id)=>S.queue.some(q=>q.table===t&&q.id===id&&q.type==='up');
+  S.projets=[...p.data.filter(x=>!pend('vit_projets',x.id)),...S.projets.filter(x=>pendUp('vit_projets',x.id))];
+  S.recus=[...r.data.filter(x=>!pend('vit_recus',x.id)),...S.recus.filter(x=>pendUp('vit_recus',x.id))];
+  if(a.data&&!pend('vit_ateliers',S.uid))S.atelier={...a.data};
+  persist();renderHeader();renderProjets();renderRecus();
+}
+function setChip(){
+  const c=$('#chip');if(!c)return;
+  const n=S.queue.length;let t,cls='';
+  if(!navigator.onLine){t='Hors ligne'+(n?` · ${n} à envoyer`:'');cls='off';}
+  else if(syncState==='sync'){t='Synchronisation…';cls='sync';}
+  else if(syncState==='err'){t='Synchro impossible';cls='err';}
+  else if(n){t=`${n} à envoyer`;cls='sync';}
+  else t='Synchronisé';
+  c.textContent=t;c.className='chip '+cls;
+  const si=$('#syncInfo');
+  if(si)si.textContent=navigator.onLine?(n?`${n} modification(s) en attente d'envoi.`:'Toutes vos données sont à jour sur le serveur.'):'Pas de connexion : vos factures sont gardées sur ce téléphone et seront envoyées au retour d\'internet.';
+}
+
+/* ---------- accès (ID + mot de passe) ---------- */
+const cleanId=s=>String(s||'').trim().toLowerCase().replace(/[^a-z0-9._-]/g,'');
+const idMail=id=>id+'@facturier.app';
+function authMsg(t,ok){const m=$('#authMsg');m.textContent=t||'';m.className='msg'+(ok?' ok':'');}
+async function doLogin(){
+  const id=cleanId($('#lgId').value),pw=$('#lgPw').value;
+  if(id.length<3||!pw)return authMsg('Entrez votre ID et votre mot de passe.');
+  if(!sb||!navigator.onLine)return authMsg('Une connexion internet est nécessaire pour se connecter la première fois.');
+  authMsg('Connexion…',true);
+  const {data,error}=await sb.auth.signInWithPassword({email:idMail(id),password:pw});
+  if(error)return authMsg('ID ou mot de passe incorrect.');
+  authMsg('');startApp(data.user.id,id);
+}
+async function doRegister(){
+  const id=cleanId($('#rgId').value),nom=$('#rgNom').value.trim(),pw=$('#rgPw').value,pw2=$('#rgPw2').value;
+  if(id.length<3)return authMsg('L\'ID doit avoir au moins 3 caractères (lettres, chiffres, - ou _).');
+  if(!nom)return authMsg('Indiquez le nom de l\'atelier.');
+  if(pw.length<6)return authMsg('Le mot de passe doit avoir au moins 6 caractères.');
+  if(pw!==pw2)return authMsg('Les deux mots de passe sont différents.');
+  if(!sb||!navigator.onLine)return authMsg('Une connexion internet est nécessaire pour créer le compte.');
+  authMsg('Création du compte…',true);
+  const email=idMail(id);
+  const {data,error}=await sb.auth.signUp({email,password:pw});
+  if(error)return authMsg(/registered|already/i.test(error.message)?'Cet ID est déjà pris. Choisissez-en un autre.':error.message);
+  let user=data.user;
+  if(!data.session){
+    const r=await sb.auth.signInWithPassword({email,password:pw});
+    if(r.error)return authMsg('Compte créé, mais la confirmation par e-mail est activée sur le serveur : désactivez « Confirm email » dans Supabase.');
+    user=r.data.user;
+  }
+  authMsg('');
+  startApp(user.id,id,{ident:id,nom,metier:$('#rgMetier').value,logo:regLogo,contacts:$('#rgContacts').value.trim(),adresse:$('#rgAdr').value.trim(),devise:'GNF'});
+}
+async function logout(){
+  if(S.queue.length&&!confirm('Des factures ne sont pas encore envoyées au serveur. Elles restent sur ce téléphone. Se déconnecter quand même ?'))return;
+  try{if(sb)await sb.auth.signOut();}catch(e){}
+  localStorage.removeItem('vit_last');location.reload();
+}
+function showAuth(){$('#auth').hidden=false;$('#app').hidden=true;}
+
+/* ---------- logo ---------- */
+function compressLogo(file,max=240){
+  return new Promise((res,rej)=>{
+    const img=new Image(),url=URL.createObjectURL(file);
+    img.onload=()=>{
+      const c=document.createElement('canvas');c.width=c.height=max;
+      const x=c.getContext('2d'),s=Math.min(max/img.width,max/img.height);
+      const w=img.width*s,h=img.height*s;
+      x.drawImage(img,(max-w)/2,(max-h)/2,w,h);
+      URL.revokeObjectURL(url);res(c.toDataURL('image/png'));
+    };
+    img.onerror=()=>rej(new Error('image'));img.src=url;
+  });
+}
+function showLogo(el,src){el.innerHTML=src?`<img src="${src}" alt="">`:'Logo';}
+
+/* ---------- démarrage ---------- */
+function startApp(uid,ident,initial){
+  S.uid=uid;S.ident=ident;loadLocal();
+  if(initial){S.atelier={...S.atelier,...initial};persist();}
+  localStorage.setItem('vit_last',JSON.stringify({uid,ident}));
+  $('#auth').hidden=true;$('#app').hidden=false;
+  D=loadDraft()||newDraft();
+  renderHeader();renderDraft();go('new');
+  if(initial)enqueue({table:'vit_ateliers',id:uid,type:'up'});else flush();
+}
+async function boot(){
+  fillSelects();
+  if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+  let session=null;
+  try{if(sb){const r=await sb.auth.getSession();session=r.data&&r.data.session;}}catch(e){}
+  if(session){
+    const id=cleanId((session.user.email||'').split('@')[0]);
+    return startApp(session.user.id,id);
+  }
+  let last=null;try{last=JSON.parse(localStorage.getItem('vit_last')||'null');}catch(e){}
+  if(last&&!navigator.onLine)return startApp(last.uid,last.ident);
+  showAuth();
+}
+
+/* ---------- brouillon de facture ---------- */
+function fillSelects(){
+  const mo=Object.entries(METIERS).map(([k,v])=>`<option value="${k}">${esc(v.label)}</option>`).join('');
+  ['#rgMetier','#pfMetier','#metierSel'].forEach(s=>{$(s).innerHTML=mo;});
+  $('#addMode').innerHTML=Object.entries(MODES).map(([k,v])=>`<option value="${k}">${esc(v.label)}</option>`).join('');
+}
+function newDraft(){
+  const mk=(S.atelier&&S.atelier.metier)||'vitrerie';
+  return {id:null,numero:null,metier:mk,unite:'m',date:todayISO(),client_nom:'',client_contact:'',chantier:'',
+    sections:modelSections(mk),remise_active:false,remise_pct:''};
+}
+const DK=()=>'vit_draft_'+S.uid;
+function saveDraft(){try{localStorage.setItem(DK(),JSON.stringify(D));}catch(e){}}
+function loadDraft(){
+  try{
+    const d=JSON.parse(localStorage.getItem(DK())||'null');if(!d)return null;
+    if(!Array.isArray(d.sections)||!d.sections.length)d.sections=legacySections(d);
+    if(!d.sections.length)d.sections=modelSections(d.metier||'vitrerie');
+    d.sections.forEach(s=>{s.id=s.id||uuid();s.rows=(s.rows&&s.rows.length)?s.rows:[blankRow(s.mode)];});
+    d.metier=d.metier||'vitrerie';
+    return d;
+  }catch(e){return null;}
+}
+const secById=id=>D.sections.find(s=>s.id===id);
+const sidOf=el=>el.closest('[data-sid]').dataset.sid;
+function theadHTML(sec){
+  return '<tr><th></th>'+MODES[sec.mode].cols.map(c=>`<th>${esc(colLabel(c,sec,D.unite))}</th>`).join('')+'<th></th></tr>';
+}
+function rowHTML(sec,i,r){
+  const mid=MODES[sec.mode].cols.map(c=>{
+    if(c==='u'||c==='t')return `<td class="calc ${c}">—</td>`;
+    if(c==='des')return `<td><input class="cell txt" data-f="des" value="${esc(r.des)}" placeholder="facultatif"></td>`;
+    return `<td><input class="cell" data-f="${c}" inputmode="decimal" value="${esc(r[c])}"></td>`;
+  }).join('');
+  return `<tr data-i="${i}"><td class="n">${i+1}</td>${mid}<td><button class="x" data-act="delRow" aria-label="Supprimer la ligne">×</button></td></tr>`;
+}
+function secHTML(sec){
+  const opts=Object.entries(MODES).map(([k,v])=>`<option value="${k}"${k===sec.mode?' selected':''}>${esc(v.label)}</option>`).join('');
+  return `<div class="sheet" data-sid="${sec.id}">
+    <div class="sechead"><input class="sectitle" value="${esc(sec.titre)}" aria-label="Titre du tableau"><button class="x" data-act="delSec" aria-label="Supprimer le tableau">×</button></div>
+    <div class="secopts"><select class="secmode" aria-label="Type de calcul">${opts}</select>${sec.mode==='unite'?`<input class="secq" value="${esc(sec.qlabel)}" placeholder="Unité : Jours, kg, sacs…">`:''}</div>
+    <div class="scroll"><table class="t"><thead>${theadHTML(sec)}</thead><tbody data-sid="${sec.id}">${sec.rows.map((r,i)=>rowHTML(sec,i,r)).join('')}</tbody></table></div>
+    <div class="montant"><span>MONTANT</span><b class="msum">0</b></div></div>`;
+}
+function renderSections(){
+  D.sections.forEach(s=>{if(!s.rows.length||isComplete(s,s.rows[s.rows.length-1]))s.rows.push(blankRow(s.mode));});
+  $('#secs').innerHTML=D.sections.map(secHTML).join('');
+  D.sections.forEach(s=>s.rows.forEach((r,i)=>updRow(s,i)));
+}
+function updRow(sec,i){
+  const tb=document.querySelector(`tbody[data-sid="${sec.id}"]`),tr=tb&&tb.children[i];if(!tr)return;
+  const r=sec.rows[i],ok=isComplete(sec,r),c=ok?calcLine(sec,r,D.unite):null;
+  const u=tr.querySelector('.u'),t=tr.querySelector('.t');
+  if(u)u.textContent=ok&&c.u!=null?fmt(c.u):'—';
+  if(t)t.textContent=ok?fmt(c.t):'—';
+}
+function refresh(){
+  const t=totals(D);
+  D.sections.forEach((s,i)=>{const el=document.querySelector(`.sheet[data-sid="${s.id}"] .msum`);if(el)el.textContent=money(t.secs[i]);});
+  $('#fact').textContent=money(t.f);
+  const on=D.remise_active&&t.pct>0;
+  $('#netBox').hidden=!on;
+  $('#remLbl').textContent=`Remise de ${fmtN(t.pct)} %`;$('#remAmt').textContent='− '+money(t.rem);$('#net').textContent=money(t.net);
+}
+function renderDraft(){
+  $('#cNom').value=D.client_nom;$('#cTel').value=D.client_contact;$('#cAdr').value=D.chantier;$('#dDate').value=D.date;
+  $('#metierSel').value=D.metier;
+  $$('#unitSeg button').forEach(b=>b.classList.toggle('on',b.dataset.id===D.unite));
+  renderSections();
+  $('#remOn').checked=D.remise_active;$('#remBox').hidden=!D.remise_active;$('#remPct').value=D.remise_pct;
+  $('#editBanner').hidden=!D.id;$('#editNum').textContent=D.numero||'';
+  $('#btnConfirm').textContent=D.id?'Enregistrer les modifications':'Confirmer la facture';
+  refresh();
+}
+$('#v-new').addEventListener('input',e=>{
+  const el=e.target;
+  if(el.dataset.f){
+    const tb=el.closest('tbody'),sec=secById(tb.dataset.sid),i=+el.closest('tr').dataset.i;
+    sec.rows[i][el.dataset.f]=el.value;updRow(sec,i);
+    const a=sec.rows;
+    if(isComplete(sec,a[a.length-1])){          // ligne remplie : la suivante s'ajoute
+      a.push(blankRow(sec.mode));tb.insertAdjacentHTML('beforeend',rowHTML(sec,a.length-1,a[a.length-1]));
+    }
+    refresh();saveDraft();
+  }else if(el.classList.contains('sectitle')){secById(sidOf(el)).titre=el.value;saveDraft();}
+  else if(el.dataset.d){D[el.dataset.d]=el.value;saveDraft();}
+  else if(el.id==='remPct'){D.remise_pct=el.value;refresh();saveDraft();}
+});
+$('#v-new').addEventListener('change',e=>{
+  const el=e.target;
+  if(el.classList.contains('secmode')){
+    const sec=secById(sidOf(el));sec.mode=el.value;
+    sec.rows=sec.rows.map(r=>({...blankRow(sec.mode),...r}));
+    renderSections();refresh();saveDraft();
+  }else if(el.classList.contains('secq')){
+    secById(sidOf(el)).qlabel=el.value.trim();renderSections();refresh();saveDraft();
+  }else if(el.id==='metierSel')applyMetier(el.value);
+});
+$('#remOn').addEventListener('change',e=>{D.remise_active=e.target.checked;$('#remBox').hidden=!D.remise_active;refresh();saveDraft();});
+const hasData=()=>D.sections.some(s=>s.rows.some(r=>isComplete(s,r)));
+function applyMetier(key){
+  if(hasData()&&!confirm('Remplacer les tableaux actuels par le modèle de ce métier ? Les lignes déjà saisies seront perdues.')){$('#metierSel').value=D.metier;return;}
+  D.metier=key;D.sections=modelSections(key);renderSections();refresh();saveDraft();
+}
+
+function confirmFacture(){
+  const t=totals(D);
+  if(!D.client_nom.trim()){toast('Indiquez le nom du client.');$('#cNom').focus();return;}
+  if(t.f<=0){toast('Remplissez au moins une ligne complète.');return;}
+  const now=new Date().toISOString();
+  const old=D.id&&S.projets.find(p=>p.id===D.id);
+  const sections=D.sections.map(s=>({id:s.id,titre:(s.titre||'').trim()||'Tableau',mode:s.mode,qlabel:s.qlabel||'',
+    rows:s.rows.filter(r=>isComplete(s,r)).map(r=>({...r}))})).filter(s=>s.rows.length);
+  const p={
+    id:D.id||uuid(),numero:old?old.numero:`F-${stamp()}-${code()}`,metier:D.metier,date:D.date||todayISO(),
+    client_nom:D.client_nom.trim(),client_contact:D.client_contact.trim(),chantier:D.chantier.trim(),unite:D.unite,
+    sections,facture:t.f,remise_active:D.remise_active&&t.pct>0,remise_pct:t.pct,facture_nette:t.net,
+    created_at:old?old.created_at:now,updated_at:now
+  };
+  S.projets=S.projets.filter(x=>x.id!==p.id);S.projets.push(p);
+  enqueue({table:'vit_projets',id:p.id,type:'up'});
+  localStorage.removeItem(DK());D=newDraft();renderDraft();
+  toast(`Facture ${p.numero} enregistrée.`);
+  go('projets');
+}
+
+/* ---------- navigation ---------- */
+function go(v){
+  $$('.view').forEach(s=>s.hidden=s.id!=='v-'+v);
+  $$('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.id===v));
+  if(v==='projets')renderProjets();
+  if(v==='recus')renderRecus();
+  if(v==='profil')renderProfil();
+  window.scrollTo(0,0);
+}
+function renderHeader(){
+  const a=S.atelier;
+  $('#hNom').textContent=a.nom||'Mon atelier';$('#hId').textContent='ID : '+(S.ident||'');
+  const hl=$('#hLogo');hl.hidden=!a.logo;if(a.logo)hl.src=a.logo;
+  const fl=$('#fhLogo');fl.hidden=!a.logo;if(a.logo)fl.src=a.logo;
+  $('#fhNom').textContent=a.nom||'Mon atelier';
+  $('#fhInfo').textContent=[a.contacts,a.adresse].filter(Boolean).join(' · ');
+}
+
+/* ---------- projets ---------- */
+const paidOf=p=>S.recus.filter(r=>r.projet_id===p.id).reduce((s,r)=>s+num(r.montant_recu),0);
+const byDate=(a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''));
+function renderProjets(){
+  const q=($('#pSearch').value||'').toLowerCase().trim();
+  const list=S.projets.filter(p=>!q||`${p.client_nom} ${p.numero} ${p.chantier}`.toLowerCase().includes(q)).sort(byDate);
+  $('#pList').innerHTML=list.length?list.map(p=>{
+    const pd=paidOf(p),reste=p.facture_nette-pd;
+    const badge=pd<=0?'<span class="pill">Non payé</span>':reste<=0?'<span class="pill ok">Soldé</span>':'<span class="pill part">Paiement partiel</span>';
+    return `<article class="item">
+      <div class="head"><div><div class="num">${esc(p.numero)} · ${fdate(p.date)}</div><div class="cl">${esc(p.client_nom)}</div>
+        <div class="meta">${esc(p.chantier||'Chantier non précisé')}</div></div>
+        <div class="amt">${money(p.facture_nette)}</div></div>
+      <div class="meta" style="margin-top:6px">${badge}${pd>0&&reste>0?` Reste ${money(reste)}`:''}</div>
+      <div class="acts" data-id="${p.id}">
+        <button class="btn sm primary" data-act="factPdf" data-id="${p.id}">PDF</button>
+        <button class="btn sm" data-act="factShare" data-id="${p.id}">WhatsApp</button>
+        <button class="btn sm" data-act="factRecu" data-id="${p.id}">Reçu</button>
+        <button class="btn sm" data-act="factEdit" data-id="${p.id}">Modifier</button>
+        <button class="btn sm danger" data-act="factDel" data-id="${p.id}">Supprimer</button>
+      </div></article>`;
+  }).join(''):`<p class="empty">${q?'Aucun projet ne correspond.':'Aucune facture pour le moment. Remplissez l\'onglet Facture puis confirmez.'}</p>`;
+}
+$('#pSearch').addEventListener('input',renderProjets);
+function editFact(id){
+  const p=S.projets.find(x=>x.id===id);if(!p)return;
+  const secs=JSON.parse(JSON.stringify(secsOf(p)));
+  secs.forEach(s=>{s.id=s.id||uuid();s.qlabel=s.qlabel||'';s.rows=(s.rows||[]).map(r=>({...blankRow(s.mode),...r}));});
+  D={id:p.id,numero:p.numero,metier:p.metier||'vitrerie',unite:p.unite||'m',date:p.date,client_nom:p.client_nom,client_contact:p.client_contact||'',chantier:p.chantier||'',
+    sections:secs,remise_active:!!p.remise_active,remise_pct:p.remise_pct||''};
+  saveDraft();renderDraft();go('new');
+}
+function delFact(id){
+  const p=S.projets.find(x=>x.id===id);if(!p)return;
+  if(!confirm(`Supprimer la facture ${p.numero} de ${p.client_nom} et ses reçus ?`))return;
+  const rids=S.recus.filter(r=>r.projet_id===id).map(r=>r.id);
+  S.recus=S.recus.filter(r=>r.projet_id!==id);dropQueue('vit_recus',rids);
+  S.projets=S.projets.filter(x=>x.id!==id);
+  enqueue({table:'vit_projets',id,type:'del'});
+  renderProjets();toast('Facture supprimée.');
+}
+
+/* ---------- reçus ---------- */
+function renderRecus(){
+  const sel=$('#rpSel'),keep=rpFocus||sel.value;
+  const ps=[...S.projets].sort(byDate);
+  sel.innerHTML='<option value="">Tous les projets</option>'+ps.map(p=>`<option value="${p.id}">${esc(p.numero)} — ${esc(p.client_nom)}</option>`).join('');
+  sel.value=ps.some(p=>p.id===keep)?keep:'';rpFocus=sel.value;
+  const p=S.projets.find(x=>x.id===sel.value);
+  $('#rpNew').disabled=!S.projets.length;
+  $('#rpSummary').innerHTML=p?(()=>{const pd=paidOf(p);return `<div class="sum"><div>Facture nette<b>${money(p.facture_nette)}</b></div><div>Déjà reçu<b>${money(pd)}</b></div><div>Reste<b>${money(Math.max(0,p.facture_nette-pd))}</b></div></div>`;})():'';
+  const list=S.recus.filter(r=>!p||r.projet_id===p.id).sort(byDate);
+  $('#rpList').innerHTML=list.length?list.map(r=>{
+    const pr=S.projets.find(x=>x.id===r.projet_id);
+    return `<article class="item" style="border-left-color:var(--putty)">
+      <div class="head"><div><div class="num">${esc(r.numero)} · ${fdate(r.date_recu)}</div><div class="cl">${esc(pr?pr.client_nom:'—')}</div>
+        <div class="meta">Facture ${esc(pr?pr.numero:'')}</div></div><div class="amt">${money(num(r.montant_recu))}</div></div>
+      <div class="meta" style="margin-top:6px">${num(r.reste)>0?`Reste ${money(num(r.reste))}, payable le ${fdate(r.date_reste)}`:'<span class="pill ok">Facture soldée</span>'}</div>
+      <div class="acts"><button class="btn sm primary" data-act="recuPdf" data-id="${r.id}">PDF</button>
+        <button class="btn sm" data-act="recuShare" data-id="${r.id}">WhatsApp</button>
+        <button class="btn sm danger" data-act="recuDel" data-id="${r.id}">Supprimer</button></div></article>`;
+  }).join(''):'<p class="empty">Aucun reçu. Touchez « Nouveau reçu » quand un client paie.</p>';
+}
+$('#rpSel').addEventListener('change',e=>{rpFocus=e.target.value;renderRecus();});
+function openRecu(projetId){
+  if(!S.projets.length)return toast('Créez d\'abord une facture.');
+  const ps=[...S.projets].sort(byDate);
+  $('#mrProj').innerHTML=ps.map(p=>`<option value="${p.id}">${esc(p.numero)} — ${esc(p.client_nom)}</option>`).join('');
+  $('#mrProj').value=ps.some(p=>p.id===projetId)?projetId:ps[0].id;
+  $('#mrDate').value=todayISO();$('#mrDateReste').value='';
+  mrReset();$('#mRecu').hidden=false;
+}
+function mrProjet(){return S.projets.find(x=>x.id===$('#mrProj').value);}
+function mrReset(){const p=mrProjet();if(!p)return;$('#mrMontant').value=Math.max(0,Math.round(p.facture_nette-paidOf(p)))||'';mrCalc();}
+function mrCalc(){
+  const p=mrProjet();if(!p)return;
+  const before=paidOf(p),m=num($('#mrMontant').value),reste=Math.round(p.facture_nette-before-m);
+  $('#mrInfo').innerHTML=`Facture nette : <b>${money(p.facture_nette)}</b> · déjà reçu : <b>${money(before)}</b>`;
+  $('#mrReste').textContent=money(Math.max(0,reste));$('#mrDRWrap').hidden=reste<=0;
+}
+$('#mrProj').addEventListener('change',mrReset);
+$('#mrMontant').addEventListener('input',mrCalc);
+function saveRecu(){
+  const p=mrProjet();if(!p)return;
+  const m=num($('#mrMontant').value);
+  if(m<=0)return toast('Indiquez le montant reçu.');
+  const reste=Math.round(p.facture_nette-paidOf(p)-m);
+  if(reste<0)return toast('Ce montant dépasse le reste à payer.');
+  const dr=$('#mrDateReste').value;
+  if(reste>0&&!dr)return toast('Indiquez la date de paiement du reste.');
+  const r={id:uuid(),projet_id:p.id,numero:`R-${stamp()}-${code()}`,date_recu:$('#mrDate').value||todayISO(),
+    montant_recu:m,reste,date_reste:reste>0?dr:null,created_at:new Date().toISOString()};
+  S.recus.push(r);enqueue({table:'vit_recus',id:r.id,type:'up'});
+  $('#mRecu').hidden=true;rpFocus=p.id;renderRecus();toast(`Reçu ${r.numero} enregistré.`);
+}
+function delRecu(id){
+  if(!confirm('Supprimer ce reçu ?'))return;
+  S.recus=S.recus.filter(r=>r.id!==id);enqueue({table:'vit_recus',id,type:'del'});renderRecus();
+}
+
+/* ---------- atelier ---------- */
+function renderProfil(){
+  const a=S.atelier;
+  $('#pfId').value=S.ident;$('#pfNom').value=a.nom||'';$('#pfMetier').value=a.metier||'vitrerie';$('#pfContacts').value=a.contacts||'';$('#pfAdr').value=a.adresse||'';$('#pfDevise').value=a.devise||'GNF';
+  pfLogoNew=null;showLogo($('#pfLogoPrev'),a.logo);setChip();
+}
+function saveProfil(){
+  const nom=$('#pfNom').value.trim();if(!nom)return toast('Indiquez le nom de l\'atelier.');
+  S.atelier={...S.atelier,ident:S.ident,nom,contacts:$('#pfContacts').value.trim(),adresse:$('#pfAdr').value.trim(),
+    metier:$('#pfMetier').value,devise:($('#pfDevise').value.trim()||'GNF').toUpperCase(),logo:pfLogoNew!==null?pfLogoNew:S.atelier.logo,updated_at:new Date().toISOString()};
+  enqueue({table:'vit_ateliers',id:S.uid,type:'up'});renderHeader();refresh();toast('Atelier enregistré.');
+}
+$('#rgLogo').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{regLogo=await compressLogo(f);showLogo($('#rgLogoPrev'),regLogo);}catch(_){toast('Image illisible.');}});
+$('#pfLogo').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{pfLogoNew=await compressLogo(f);showLogo($('#pfLogoPrev'),pfLogoNew);}catch(_){toast('Image illisible.');}});
+
+/* ---------- PDF ---------- */
+function pdfHeader(doc,title,numero,date){
+  const a=S.atelier,W=doc.internal.pageSize.getWidth();
+  let x=14;
+  if(a.logo){try{doc.addImage(a.logo,'PNG',14,12,24,24);x=42;}catch(e){}}
+  doc.setFont('helvetica','bold');doc.setFontSize(16);doc.setTextColor(12,53,70);
+  doc.text(a.nom||'Mon atelier',x,19);
+  doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(80);
+  let y=25;
+  [a.contacts,a.adresse].filter(Boolean).forEach(l=>doc.splitTextToSize(l,100).forEach(s=>{doc.text(s,x,y);y+=4.5;}));
+  doc.setFont('helvetica','bold');doc.setFontSize(15);doc.setTextColor(14,142,168);
+  doc.text(title,W-14,19,{align:'right'});
+  doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(80);
+  doc.text('N° '+numero,W-14,25,{align:'right'});
+  doc.text('Date : '+fdate(date),W-14,30,{align:'right'});
+  const yy=Math.max(y,40)+2;
+  doc.setDrawColor(14,142,168);doc.setLineWidth(.6);doc.line(14,yy,W-14,yy);
+  return yy+8;
+}
+function pdfClient(doc,y,p){
+  doc.setFontSize(10);doc.setTextColor(0);
+  [['Client',p.client_nom],['Contact',p.client_contact],['Chantier',p.chantier]].forEach(([k,v])=>{
+    if(!v)return;
+    doc.setFont('helvetica','bold');doc.text(k+' :',14,y);
+    doc.setFont('helvetica','normal');
+    const lines=doc.splitTextToSize(String(v),150);doc.text(lines,38,y);y+=5.5*lines.length;
+  });
+  return y+4;
+}
+function pdfTable(doc,y,title,head,body,foot){
+  if(y>245){doc.addPage();y=20;}
+  doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(12,53,70);doc.text(title,14,y);
+  const cs={};head.forEach((h,j)=>{if(h==='Désignation')cs[j]={halign:'left'};});
+  doc.autoTable({startY:y+2,head:[head],body,foot:[foot],theme:'grid',margin:{left:14,right:14},columnStyles:cs,
+    styles:{fontSize:8.5,cellPadding:1.8,halign:'center',textColor:[20,40,50]},
+    headStyles:{fillColor:[12,53,70],textColor:255},
+    footStyles:{fillColor:[222,240,245],textColor:[12,53,70],fontStyle:'bold',fontSize:10}});
+  return doc.lastAutoTable.finalY+8;
+}
+function buildFacturePDF(p){
+  const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'mm',format:'a4'});const W=doc.internal.pageSize.getWidth();
+  let y=pdfHeader(doc,'FACTURE',p.numero,p.date);y=pdfClient(doc,y,p);
+  const u=p.unite||'m',D2=dev();
+  secsOf(p).forEach(sec=>{
+    const rows=sec.rows||[];if(!rows.length)return;
+    const hasDes=rows.some(r=>String(r.des||'').trim());
+    const cols=MODES[sec.mode].cols.filter(c=>c!=='des'||hasDes);
+    const head=['N°',...cols.map(c=>colLabel(c,sec,u))];
+    const body=rows.map((r,i)=>{
+      const cl=calcLine(sec,r,u);
+      return [i+1,...cols.map(c=>{
+        if(c==='des')return String(r.des||'');
+        if(c==='u')return cl.u!=null?fmt(cl.u):'';
+        if(c==='t')return fmt(cl.t);
+        if(c==='pm')return fmt(num(r.pm));
+        if(c==='q')return String(r.q==null?'':r.q).trim()===''?'1':fmtN(num(r.q));
+        return fmtN(num(r[c]));
+      })];
+    });
+    y=pdfTable(doc,y,String(sec.titre||'').toUpperCase(),head,body,
+      [{content:'MONTANT',colSpan:head.length-1,styles:{halign:'right'}},fmt(secTotal(sec,u))+' '+D2]);
+  });
+  if(y>235){doc.addPage();y=20;}
+  doc.setFillColor(12,53,70);doc.roundedRect(14,y,W-28,16,2,2,'F');
+  doc.setTextColor(255);doc.setFont('helvetica','bold');doc.setFontSize(15);
+  doc.text('FACTURE :',20,y+10.5);doc.text(fmt(p.facture)+' '+D2,W-20,y+10.5,{align:'right'});y+=22;
+  if(p.remise_active&&num(p.remise_pct)>0){
+    doc.setTextColor(50);doc.setFont('helvetica','normal');doc.setFontSize(11);
+    doc.text(`Remise (${fmtN(num(p.remise_pct))} %)`,20,y);doc.text('- '+fmt(p.facture-p.facture_nette)+' '+D2,W-20,y,{align:'right'});y+=7;
+    doc.setFillColor(14,142,168);doc.roundedRect(14,y,W-28,16,2,2,'F');
+    doc.setTextColor(255);doc.setFont('helvetica','bold');doc.setFontSize(15);
+    doc.text('FACTURE NETTE :',20,y+10.5);doc.text(fmt(p.facture_nette)+' '+D2,W-20,y+10.5,{align:'right'});y+=20;
+  }
+  doc.setTextColor(120);doc.setFont('helvetica','normal');doc.setFontSize(9);
+  doc.text('Merci de votre confiance.',W/2,286,{align:'center'});
+  return doc;
+}
+function buildRecuPDF(r){
+  const p=S.projets.find(x=>x.id===r.projet_id);if(!p)return null;
+  const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'mm',format:'a4'});const W=doc.internal.pageSize.getWidth();
+  let y=pdfHeader(doc,'REÇU',r.numero,r.date_recu);y=pdfClient(doc,y,p);
+  doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(0);
+  doc.text(`Facture de référence : N° ${p.numero} du ${fdate(p.date)}`,14,y);y+=9;
+  const rows=[['Montant de la facture',money(p.facture_nette)],[`Montant reçu à la date du ${fdate(r.date_recu)}`,money(num(r.montant_recu))],['Reste à payer',money(num(r.reste))]];
+  if(num(r.reste)>0)rows.push([`Reste payable à la date du ${fdate(r.date_reste)}`,money(num(r.reste))]);
+  doc.autoTable({startY:y,body:rows,theme:'grid',margin:{left:14,right:14},
+    styles:{fontSize:11,cellPadding:3.5,textColor:[20,40,50]},columnStyles:{0:{cellWidth:120},1:{halign:'right',fontStyle:'bold'}}});
+  y=doc.lastAutoTable.finalY+12;
+  doc.setFontSize(11);doc.setFont('helvetica','normal');
+  const txt=`Reçu de ${p.client_nom} la somme de ${money(num(r.montant_recu))}, le ${fdate(r.date_recu)}.`+(num(r.reste)>0?` Le reste, soit ${money(num(r.reste))}, est payable le ${fdate(r.date_reste)}.`:' La facture est entièrement soldée.');
+  doc.text(doc.splitTextToSize(txt,W-28),14,y);
+  doc.setTextColor(120);doc.setFontSize(9);doc.text('Merci de votre confiance.',W/2,286,{align:'center'});
+  return doc;
+}
+function savePDF(doc,name){doc.save(name);}
+async function sharePDF(doc,name,text){
+  const blob=doc.output('blob');const file=new File([blob],name,{type:'application/pdf'});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file],title:name,text});return;}catch(e){if(e&&e.name==='AbortError')return;}
+  }
+  doc.save(name);
+  window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank');
+  toast('PDF enregistré : joignez-le dans WhatsApp.');
+}
+const factName=p=>`Facture_${safe(p.numero)}_${safe(p.client_nom)}.pdf`;
+const recuName=(r,p)=>`Recu_${safe(r.numero)}_${safe(p&&p.client_nom)}.pdf`;
+const factText=p=>`${S.atelier.nom||'Atelier'} — Facture ${p.numero}\nClient : ${p.client_nom}\nFACTURE NETTE : ${money(p.facture_nette)}`;
+
+/* ---------- actions (boutons) ---------- */
+const ACT={
+  authTab:id=>{$$('#authSeg button').forEach(b=>b.classList.toggle('on',b.dataset.id===id));$('#fLogin').hidden=id!=='login';$('#fReg').hidden=id!=='reg';authMsg('');},
+  tab:id=>go(id),
+  unit:id=>{D.unite=id;saveDraft();renderDraft();},
+  delRow:(id,b)=>{const tb=b.closest('tbody'),sec=secById(tb.dataset.sid),i=+b.closest('tr').dataset.i;sec.rows.splice(i,1);renderSections();refresh();saveDraft();},
+  addSec:()=>{const mode=$('#addMode').value;D.sections.push({id:uuid(),titre:'Nouveau tableau',mode,qlabel:mode==='unite'?'Qté':'',rows:[blankRow(mode)]});renderSections();refresh();saveDraft();toast('Tableau ajouté : modifiez son titre si besoin.');},
+  delSec:(id,b)=>{const sid=sidOf(b);if(D.sections.length<=1)return toast('Gardez au moins un tableau.');if(!confirm('Supprimer ce tableau et ses lignes ?'))return;D.sections=D.sections.filter(s=>s.id!==sid);renderSections();refresh();saveDraft();},
+  confirm:()=>confirmFacture(),
+  resetDraft:()=>{if(confirm('Vider tout le formulaire ?')){localStorage.removeItem(DK());D=newDraft();renderDraft();}},
+  cancelEdit:()=>{localStorage.removeItem(DK());D=newDraft();renderDraft();},
+  factPdf:id=>{const p=S.projets.find(x=>x.id===id);if(p){savePDF(buildFacturePDF(p),factName(p));toast('PDF enregistré.');}},
+  factShare:id=>{const p=S.projets.find(x=>x.id===id);if(p)sharePDF(buildFacturePDF(p),factName(p),factText(p));},
+  factEdit:id=>editFact(id),
+  factDel:id=>delFact(id),
+  factRecu:id=>{rpFocus=id;go('recus');openRecu(id);},
+  newRecu:()=>openRecu(rpFocus),
+  saveRecu:()=>saveRecu(),
+  closeModal:()=>{$('#mRecu').hidden=true;},
+  recuPdf:id=>{const r=S.recus.find(x=>x.id===id);const d=r&&buildRecuPDF(r);if(d){const p=S.projets.find(x=>x.id===r.projet_id);savePDF(d,recuName(r,p));toast('PDF enregistré.');}},
+  recuShare:id=>{const r=S.recus.find(x=>x.id===id);const d=r&&buildRecuPDF(r);if(d){const p=S.projets.find(x=>x.id===r.projet_id);sharePDF(d,recuName(r,p),`${S.atelier.nom||'Atelier'} — Reçu ${r.numero}\nClient : ${p.client_nom}\nMontant reçu : ${money(num(r.montant_recu))}`);}},
+  recuDel:id=>delRecu(id),
+  saveProfil:()=>saveProfil(),
+  syncNow:()=>{if(!navigator.onLine)return toast('Pas de connexion internet.');flush().then(()=>toast('Synchronisation terminée.'));},
+  logout:()=>logout()
+};
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]');if(!b)return;
+  const f=ACT[b.dataset.act];if(f)f(b.dataset.id,b);
+});
+$('#fLogin').addEventListener('submit',e=>{e.preventDefault();doLogin();});
+$('#fReg').addEventListener('submit',e=>{e.preventDefault();doRegister();});
+
+/* ---------- synchronisation automatique ---------- */
+window.addEventListener('online',()=>{setChip();flush();});
+window.addEventListener('offline',setChip);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)flush();});
+setInterval(()=>{if(S.uid&&navigator.onLine&&!document.hidden)flush();},60000);
+
+boot();
+</script>
+</body>
+</html>
